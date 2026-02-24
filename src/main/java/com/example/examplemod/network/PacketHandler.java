@@ -29,6 +29,8 @@ public class PacketHandler {
         INSTANCE.registerMessage(id++, PacketSaveKit.class, PacketSaveKit::toBytes, PacketSaveKit::new, PacketSaveKit::handle);
         INSTANCE.registerMessage(id++, PacketSelectKit.class, PacketSelectKit::toBytes, PacketSelectKit::new, PacketSelectKit::handle);
         INSTANCE.registerMessage(id++, PacketDeleteKit.class, PacketDeleteKit::toBytes, PacketDeleteKit::new, PacketDeleteKit::handle);
+        // Внутри метода register() в PacketHandler.java
+        INSTANCE.registerMessage(id++, PacketToggleShop.class, PacketToggleShop::toBytes, PacketToggleShop::new, PacketToggleShop::handle);
         INSTANCE.registerMessage(id++, PacketKillstreak.class, PacketKillstreak::toBytes, PacketKillstreak::new, PacketKillstreak::handle);
     }
 

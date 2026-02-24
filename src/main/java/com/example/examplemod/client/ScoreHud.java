@@ -75,7 +75,7 @@ public class ScoreHud implements IGuiOverlay {
         // Текст после эмблемы
         guiGraphics.drawString(mc.font, "БАНДОСЫ", team2StartX + 20, y + 6, COLOR_T2, false);
 
-        // НОВОЕ: Прогресс-бар для режима Удержания
+        // Прогресс-бар для режима Удержания
         if (com.example.examplemod.network.ClientTeamData.currentGameMode.equals("domination")) {
             int barWidth = 180; // Сделаем чуть шире
             int barHeight = 10;
@@ -85,7 +85,7 @@ public class ScoreHud implements IGuiOverlay {
             int bar_s1 = com.example.examplemod.network.ClientTeamData.clientScore1;
             int bar_s2 = com.example.examplemod.network.ClientTeamData.clientScore2;
 
-            // Получаем цель из данных клиента (убедись, что добавил её в ClientTeamData)
+            // Получаем цель из данных клиента
             int target = com.example.examplemod.network.ClientTeamData.clientTargetScore;
             if (target <= 0) target = 100; // Защита от деления на ноль
 
@@ -124,6 +124,7 @@ public class ScoreHud implements IGuiOverlay {
             guiGraphics.drawCenteredString(mc.font, status, centerX, barStartY + 14, color);
         }
     }
+
     // Метод для отрисовки цветного блока со счетом и анимацией
     private void renderScoreBlock(GuiGraphics gui, Minecraft mc, int x, int y, int w, int h, int score, int color, long timePassed) {
         // Фон цвета команды

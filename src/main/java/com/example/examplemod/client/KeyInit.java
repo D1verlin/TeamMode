@@ -6,24 +6,30 @@ import net.minecraftforge.client.settings.KeyConflictContext;
 import org.lwjgl.glfw.GLFW;
 
 public class KeyInit {
-    // Категория настроек в меню управления
     public static final String CATEGORY = "key.categories.teammod";
 
-    // Клавиша M (Меню команды)
     public static final KeyMapping OPEN_TEAM_MENU = new KeyMapping(
-            "key.teammod.open_team", // Название в файле перевода
+            "key.teammod.open_team",
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_M, // Кнопка по умолчанию
+            GLFW.GLFW_KEY_M,
             CATEGORY
     );
 
-    // Клавиша K (Редактор китов)
     public static final KeyMapping OPEN_KIT_EDITOR = new KeyMapping(
             "key.teammod.open_editor",
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_K, // Кнопка по умолчанию
+            GLFW.GLFW_KEY_K,
+            CATEGORY
+    );
+
+    // НОВОЕ: Клавиша для переключения режима магазина (на цифровой клавиатуре)
+    public static final KeyMapping TOGGLE_SHOP_MODE = new KeyMapping(
+            "key.teammod.toggle_shop",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_KP_MULTIPLY, // Клавиша "*" на Numpad
             CATEGORY
     );
 }

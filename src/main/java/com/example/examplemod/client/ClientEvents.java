@@ -2,6 +2,8 @@ package com.example.examplemod.client;
 
 import com.example.examplemod.ExampleMod;
 import com.example.examplemod.network.ClientTeamData;
+import com.example.examplemod.network.PacketToggleShop;
+import com.example.examplemod.network.PacketHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
@@ -44,7 +46,6 @@ public class ClientEvents {
             }
         }
     }
-
     // Событие: Игрок возродился
     @SubscribeEvent
     public static void onRespawn(ClientPlayerNetworkEvent.Clone event) {
@@ -57,6 +58,14 @@ public class ClientEvents {
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
 
+            if (ClientTeamData.currentGameMode.equals("shop")) {
+                // Прячем меню, если оно вдруг открылось автоматически
+                if (Minecraft.getInstance().screen instanceof KitSelectorScreen) {
+                    Minecraft.getInstance().setScreen(null);
+                }
+                // Сбрасываем таймеры авто-открытия
+                // needToOpenKitScreen = false;
+            }
             // НОВАЯ ЗАЩИТА: Если игрок уже сам открыл какое-то меню или уже смотрит в него - отменяем авто-открытие
             if (Minecraft.getInstance().screen instanceof KitSelectorScreen || Minecraft.getInstance().screen instanceof TeamSelectScreen) {
                 needToOpenTeamScreen = false;
@@ -108,15 +117,21 @@ public class ClientEvents {
     // Обработка клавиш (M и K), если ты оставлял этот метод
     @SubscribeEvent
     public static void onKeyInput(net.minecraftforge.client.event.InputEvent.Key event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+
         if (KeyInit.OPEN_TEAM_MENU.consumeClick()) {
-            Minecraft.getInstance().setScreen(new TeamSelectScreen());
+            mc.setScreen(new TeamSelectScreen());
         }
 
         if (KeyInit.OPEN_KIT_EDITOR.consumeClick()) {
-            if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.hasPermissions(2)) {
-                Minecraft.getInstance().setScreen(new KitEditorScreen());
-            } else {
-                Minecraft.getInstance().setScreen(new KitEditorScreen());
+            mc.setScreen(new KitEditorScreen());
+        }
+
+        // НОВОЕ: Обработка клавиши "*"
+        if (KeyInit.TOGGLE_SHOP_MODE.consumeClick()) {
+            if (mc.player.hasPermissions(2)) {
+                PacketHandler.INSTANCE.sendToServer(new PacketToggleShop());
             }
         }
     }

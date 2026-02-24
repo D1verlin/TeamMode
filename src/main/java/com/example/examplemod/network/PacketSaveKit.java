@@ -31,13 +31,12 @@ public class PacketSaveKit {
             ServerPlayer player = context.getSender();
             if (player != null && player.hasPermissions(2)) {
 
-                // Собираем все непустые предметы из инвентаря админа
+                // Собираем ВСЕ слоты инвентаря админа (включая пустые), чтобы сохранить их индексы
                 List<ItemStack> items = new ArrayList<>();
                 for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
                     ItemStack stack = player.getInventory().getItem(i);
-                    if (!stack.isEmpty()) {
-                        items.add(stack.copy());
-                    }
+                    // Копируем предмет (пустой предмет скопируется как ItemStack.EMPTY)
+                    items.add(stack.copy());
                 }
 
                 // Сохраняем в глобальный конфиг

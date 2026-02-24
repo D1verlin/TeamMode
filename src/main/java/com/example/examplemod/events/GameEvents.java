@@ -22,7 +22,6 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
 
 import net.minecraft.world.phys.AABB;
-import net.minecraftforge.event.TickEvent;
 
 import java.util.HashMap;
 import java.util.List;
@@ -53,12 +52,11 @@ public class GameEvents {
                     teamData.zonePos1,
                     teamData.zonePos2,
                     teamData.zoneOwner,
-                    teamData.targetScore // Добавлено здесь
+                    teamData.targetScore
             );
 
             // --- Синхронизация КИТОВ ---
             KitData kitData = KitData.get(level);
-            // --- Синхронизация КИТОВ ---
             PacketHandler.sendKitsToPlayer(player, com.example.examplemod.config.KitConfig.KITS);
         }
     }
@@ -70,109 +68,117 @@ public class GameEvents {
             ServerLevel level = (ServerLevel) victim.level();
             TeamData data = TeamData.get(level);
 
-            // Записываем смерть жертве и прерываем её серию убийств
             data.addDeath(victim.getUUID());
             killstreaks.put(victim.getUUID(), 0);
 
-            // Проверяем убийцу
             Entity source = event.getSource().getEntity();
 
-            // Убеждаемся, что убийца - это игрок, и он не убил сам себя
             if (source instanceof ServerPlayer killer && killer != victim) {
-                // Записываем статистику убийце
                 data.addKill(killer.getUUID());
 
                 int killerTeam = data.getTeamOf(killer.getUUID());
                 int victimTeam = data.getTeamOf(victim.getUUID());
 
-                // Если убит враг из другой команды - даем очко
                 if (killerTeam != 0 && victimTeam != 0 && killerTeam != victimTeam) {
                     data.addScore(killerTeam, 1);
                 }
 
-                // Увеличиваем серию убийств (Killstreak)
                 int currentStreak = killstreaks.getOrDefault(killer.getUUID(), 0) + 1;
                 killstreaks.put(killer.getUUID(), currentStreak);
 
                 String titleText = "";
                 String subtitleText = "Жертва: " + victim.getName().getString();
-                int streakColor = 0xFFFFFF; // Белый по умолчанию
+                int streakColor = 0xFFFFFF;
 
-                // Логика названий и цветов серии
                 if (currentStreak == 1) {
                     titleText = "ПЕРВАЯ КРОВЬ";
                     streakColor = 0xFFFFFF;
                 } else if (currentStreak == 2) {
                     titleText = "ДВОЙНОЕ УБИЙСТВО";
-                    streakColor = 0xFFD700; // Желтый
+                    streakColor = 0xFFD700;
                 } else if (currentStreak == 3) {
                     titleText = "ТРОЙНОЕ УБИЙСТВО";
-                    streakColor = 0xFFA500; // Оранжевый
+                    streakColor = 0xFFA500;
                 } else if (currentStreak == 4) {
                     titleText = "ДОМИНАЦИЯ";
-                    streakColor = 0xFF4500; // Оранжево-красный
+                    streakColor = 0xFF4500;
                 } else if (currentStreak == 5) {
                     titleText = "БУЙСТВО";
-                    streakColor = 0xDC143C; // Малиновый
+                    streakColor = 0xDC143C;
                 } else if (currentStreak >= 6) {
                     titleText = "НЕОСТАНОВИМ!";
-                    streakColor = 0x8B0000; // Темно-красный
+                    streakColor = 0x8B0000;
                 }
 
-                // Отправляем пакет нашему красивому интерфейсу (видит только убийца)
                 PacketHandler.INSTANCE.send(
                         PacketDistributor.PLAYER.with(() -> killer),
                         new PacketKillstreak(titleText, subtitleText, streakColor)
                 );
 
-                // Оповещаем жертву маленьким текстом над хотбаром (параметр true = Action Bar)
                 victim.displayClientMessage(Component.literal("§cВас убил " + killer.getName().getString()), true);
             }
         }
     }
 
-    // 3. Событие: Игрок возрождается (Телепортация на базу)
+    // 3. Событие: Игрок возрождается
     @SubscribeEvent
     public static void onPlayerRespawn(net.minecraftforge.event.entity.player.PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player && !player.level().isClientSide()) {
             ServerLevel level = (ServerLevel) player.level();
             TeamData data = TeamData.get(level);
 
+            // 1. Телепортация на базу
             int teamId = data.getTeamOf(player.getUUID());
-
-            // Получаем нужный список спавнов
-            List<BlockPos> teamSpawns = (teamId == 1) ? data.spawns1 : (teamId == 2 ? data.spawns2 : null);
-
-            // Если список существует и в нём есть хотя бы одна точка
+            java.util.List<net.minecraft.core.BlockPos> teamSpawns = (teamId == 1) ? data.spawns1 : (teamId == 2 ? data.spawns2 : null);
             if (teamSpawns != null && !teamSpawns.isEmpty()) {
-                // Выбираем случайную точку с помощью встроенного рандомизатора игрока
-                BlockPos randomSpawn = teamSpawns.get(player.getRandom().nextInt(teamSpawns.size()));
-
-                // Телепортируем
+                net.minecraft.core.BlockPos randomSpawn = teamSpawns.get(player.getRandom().nextInt(teamSpawns.size()));
                 player.teleportTo(level, randomSpawn.getX() + 0.5, randomSpawn.getY() + 1, randomSpawn.getZ() + 0.5, player.getYRot(), player.getXRot());
             }
+
+            // 2. Автоматическая выдача предметов в режиме SHOP
+            if (data.gameMode.equals("shop")) {
+                giveShopKit(player, data, teamId);
+            }
         }
+    }
+
+    private static void giveShopKit(ServerPlayer player, TeamData data, int teamId) {
+        player.getInventory().clearContent();
+
+        // Загружаем кит с ID 4 для Одиночек и ID 5 для Бандосов
+        String kitKey = (teamId == 1) ? "kit4" : (teamId == 2 ? "kit5" : null);
+
+        if (kitKey != null) {
+            java.util.List<net.minecraft.world.item.ItemStack> items = com.example.examplemod.config.KitConfig.KITS.get(kitKey);
+            if (items != null && !items.isEmpty()) {
+                // Проходимся по всем сохраненным слотам и восстанавливаем их позицию
+                for (int i = 0; i < items.size() && i < player.getInventory().getContainerSize(); i++) {
+                    net.minecraft.world.item.ItemStack stack = items.get(i);
+                    if (!stack.isEmpty()) {
+                        player.getInventory().setItem(i, stack.copy());
+                    }
+                }
+            }
+        }
+        player.containerMenu.broadcastChanges();
+        player.inventoryMenu.broadcastChanges();
     }
 
     // 4. Событие: Отключаем голод
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
-        // Проверяем, что это конец тика и мы на сервере
         if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide) {
             Player player = event.player;
-            // Устанавливаем уровень еды 20 (полный) и насыщенность 5.0 каждый тик
             player.getFoodData().setFoodLevel(20);
             player.getFoodData().setSaturation(5.0f);
         }
     }
 
-    // 5. Событие: Применяем игровые правила (GameRules) при загрузке мира
+    // 5. Событие: Применяем игровые правила
     @SubscribeEvent
     public static void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
-            // Отключаем регенерацию здоровья от еды
             serverLevel.getGameRules().getRule(GameRules.RULE_NATURAL_REGENERATION).set(false, serverLevel.getServer());
-            // Отключаем ванильные сообщения о смерти в чате ("Стив был убит...")
             serverLevel.getGameRules().getRule(GameRules.RULE_SHOWDEATHMESSAGES).set(false, serverLevel.getServer());
         }
     }
@@ -180,9 +186,7 @@ public class GameEvents {
     // 6. Событие: Отключаем выпадение предметов при смерти
     @SubscribeEvent
     public static void onPlayerDrops(LivingDropsEvent event) {
-        // Проверяем, что умерла именно сущность игрока
         if (event.getEntity() instanceof Player) {
-            // Полностью отменяем выброс инвентаря в мир
             event.setCanceled(true);
         }
     }
@@ -193,14 +197,34 @@ public class GameEvents {
         com.example.examplemod.config.KitConfig.load();
     }
 
-
     private static int tickCounter = 0;
+    private static int glowTimer = 0; // Таймер для отсчета свечения
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
         tickCounter++;
+        glowTimer++;
+
+        // Логика свечения: 1200 тиков = 60 секунд
+        if (glowTimer >= 1200) {
+            glowTimer = 0;
+            net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+            if (server != null) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    if (player.isAlive()) {
+                        // Выдаем эффект свечения: 100 тиков (5 секунд), уровень 0, без партиклов
+                        player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+                                net.minecraft.world.effect.MobEffects.GLOWING, 100, 0, false, false
+                        ));
+                        // Оповещаем игрока сообщением над хотбаром
+                        player.displayClientMessage(Component.literal("§c[Радар] Позиции всех игроков раскрыты на 5 секунд!"), true);
+                    }
+                }
+            }
+        }
+
         if (tickCounter >= 20) { // Каждую 1 секунду
             tickCounter = 0;
 
@@ -209,16 +233,12 @@ public class GameEvents {
 
             TeamData data = TeamData.get(level);
 
-            // Работаем только если включен режим удержания и точки заданы
             if (data.gameMode.equals("domination") && data.zonePos1 != null && data.zonePos2 != null) {
-
-                // Создаем "коробку" из двух заданных точек
-                AABB zoneBox = new AABB(data.zonePos1, data.zonePos2).inflate(0.5); // inflate расширяет зону на полблока для точности
+                AABB zoneBox = new AABB(data.zonePos1, data.zonePos2).inflate(0.5);
 
                 int t1PlayersInZone = 0;
                 int t2PlayersInZone = 0;
 
-                // Проверяем всех игроков на сервере
                 for (ServerPlayer player : level.players()) {
                     if (player.isAlive() && zoneBox.contains(player.position())) {
                         int teamId = data.getTeamOf(player.getUUID());
@@ -227,61 +247,53 @@ public class GameEvents {
                     }
                 }
 
-                int newOwner = 0; // 0 - ничья/оспаривается, 1 - Одиночки, 2 - Бандосы
+                int newOwner = 0;
 
-                // Логика захвата: если в зоне только одна команда, она захватывает/удерживает её
                 if (t1PlayersInZone > 0 && t2PlayersInZone == 0) {
                     newOwner = 1;
-                    data.addScore(1, 1); // Даем 1 очко Одиночкам
+                    data.addScore(1, 1);
                 } else if (t2PlayersInZone > 0 && t1PlayersInZone == 0) {
                     newOwner = 2;
-                    data.addScore(2, 1); // Даем 1 очко Бандосам
+                    data.addScore(2, 1);
                 } else if (t1PlayersInZone > 0 && t2PlayersInZone > 0) {
-                    // Зона оспаривается (Contested) - очки никому не идут, владелец сбрасывается или остается старым
                     newOwner = 0;
                 }
 
-                // Если владелец сменился, синхронизируем данные (для визуала)
                 if (data.zoneOwner != newOwner) {
                     data.zoneOwner = newOwner;
                     data.sync();
                 }
 
-                // Проверка на победу
                 if (data.score1 >= data.targetScore) {
                     level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§a§lОДИНОЧКИ ПОБЕДИЛИ!"), false);
-                    resetGame(data, level); // Теперь передаем level
+                    resetGame(data, level);
                 } else if (data.score2 >= data.targetScore) {
                     level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§c§lБАНДОСЫ ПОБЕДИЛИ!"), false);
-                    resetGame(data, level); // Теперь передаем level
+                    resetGame(data, level);
                 }
             }
         }
     }
 
     private static void resetGame(TeamData data, ServerLevel level) {
-        // Сброс данных
         data.score1 = 0;
         data.score2 = 0;
         data.playerKills.clear();
         data.playerDeaths.clear();
-        data.zoneOwner = 0; // Зона снова нейтральна
+        data.zoneOwner = 0;
         data.sync();
 
-        // Респавн всех игроков на их базы
+        // Сбрасываем таймер свечения, чтобы он не сработал сразу после старта нового матча
+        glowTimer = 0;
+
         for (ServerPlayer player : level.players()) {
             if (player.isAlive()) {
                 int teamId = data.getTeamOf(player.getUUID());
-
-                // Получаем список спавнов для команды игрока
                 java.util.List<BlockPos> teamSpawns = (teamId == 1) ? data.spawns1 : (teamId == 2 ? data.spawns2 : null);
 
-                // Если спавны есть - телепортируем на случайный
                 if (teamSpawns != null && !teamSpawns.isEmpty()) {
                     BlockPos randomSpawn = teamSpawns.get(player.getRandom().nextInt(teamSpawns.size()));
                     player.teleportTo(level, randomSpawn.getX() + 0.5, randomSpawn.getY() + 1, randomSpawn.getZ() + 0.5, player.getYRot(), player.getXRot());
-
-                    // Восстанавливаем здоровье и еду для нового раунда
                     player.setHealth(player.getMaxHealth());
                     player.getFoodData().setFoodLevel(20);
                 }
