@@ -25,7 +25,10 @@ public class TeamCommands {
                 .then(Commands.literal("join")
                         .then(Commands.argument("teamId", IntegerArgumentType.integer(1, 2))
                                 .executes(TeamCommands::joinTeam)))
-
+                // /tb nightvision - Переключить ночное зрение
+                .then(Commands.literal("nightvision")
+                        .requires(source -> source.hasPermission(2))
+                        .executes(TeamCommands::toggleNightVision))
                 // /tb score - Проверить текущий счет
                 .then(Commands.literal("score")
                         .executes(TeamCommands::checkScore))
@@ -55,25 +58,31 @@ public class TeamCommands {
                                 .then(Commands.argument("index", IntegerArgumentType.integer(0))
                                         .executes(TeamCommands::delSpawn))))
 
-                // /tb mode <deathmatch|domination> - Смена режима игры (shop теперь на клавише '*')
-                .then(Commands.literal("mode")
-                        .requires(source -> source.hasPermission(2))
-                        .then(Commands.argument("modeName", StringArgumentType.word())
-                                .executes(context -> {
-                                    String mode = StringArgumentType.getString(context, "modeName").toLowerCase();
+                        // /tb mode <deathmatch|domination|defusal>
+                        .then(Commands.literal("mode")
+                                .requires(source -> source.hasPermission(2))
+                                .then(Commands.argument("modeName", StringArgumentType.word())
+                                        .executes(context -> {
+                                            String mode = StringArgumentType.getString(context, "modeName").toLowerCase();
 
-                                    // ИСПРАВЛЕНО: Убрана проверка 'shop', теперь только базовые режимы
-                                    if (!mode.equals("deathmatch") && !mode.equals("domination")) {
-                                        context.getSource().sendFailure(Component.literal("§cДоступные режимы: deathmatch, domination"));
-                                        return 1;
-                                    }
+                                            if (!mode.equals("deathmatch") && !mode.equals("domination") && !mode.equals("defusal")) {
+                                                context.getSource().sendFailure(Component.literal("§cДоступные режимы: deathmatch, domination, defusal"));
+                                                return 1;
+                                            }
 
-                                    TeamData data = TeamData.get(context.getSource().getLevel());
-                                    data.gameMode = mode;
-                                    data.sync();
-                                    context.getSource().sendSuccess(() -> Component.literal("§a[Система] §fУстановлен режим: §e" + mode), true);
-                                    return 1;
-                                })))
+                                            ServerPlayer player = context.getSource().getPlayerOrException();
+                                            TeamData data = TeamData.get(player.serverLevel());
+                                            data.gameMode = mode;
+                                            data.sync();
+                                            context.getSource().sendSystemMessage(Component.literal("§a[Система] §fУстановлен режим: §e" + mode));
+
+                                            // НОВОЕ: Если включили закладку бомбы - стартуем раунд
+                                            if (mode.equals("defusal")) {
+                                                com.example.examplemod.events.GameEvents.restartDefusalRound(player.serverLevel());
+                                            }
+
+                                            return 1;
+                                        })))
 
                 // /tb maxscore <score> - Лимит очков для победы
                 .then(Commands.literal("maxscore")
@@ -100,6 +109,36 @@ public class TeamCommands {
                                     else data.zonePos2 = player.blockPosition();
                                     data.sync();
                                     context.getSource().sendSuccess(() -> Component.literal("§a[Система] §fТочка зоны " + point + " установлена на " + player.blockPosition().toShortString()), true);
+                                    return 1;
+                                })))
+
+                // /tb setsitea <1|2> - Установка границ Плэнта А
+                .then(Commands.literal("setsitea")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("point", IntegerArgumentType.integer(1, 2))
+                                .executes(context -> {
+                                    int point = IntegerArgumentType.getInteger(context, "point");
+                                    ServerPlayer player = context.getSource().getPlayerOrException();
+                                    TeamData data = TeamData.get(player.serverLevel());
+                                    if (point == 1) data.siteAPos1 = player.blockPosition();
+                                    else data.siteAPos2 = player.blockPosition();
+                                    data.setDirty();
+                                    context.getSource().sendSystemMessage(Component.literal("§a[Система] §fТочка Плэнта А " + point + " установлена на " + player.blockPosition().toShortString()));
+                                    return 1;
+                                })))
+
+                // /tb setsiteb <1|2> - Установка границ Плэнта Б
+                .then(Commands.literal("setsiteb")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("point", IntegerArgumentType.integer(1, 2))
+                                .executes(context -> {
+                                    int point = IntegerArgumentType.getInteger(context, "point");
+                                    ServerPlayer player = context.getSource().getPlayerOrException();
+                                    TeamData data = TeamData.get(player.serverLevel());
+                                    if (point == 1) data.siteBPos1 = player.blockPosition();
+                                    else data.siteBPos2 = player.blockPosition();
+                                    data.setDirty();
+                                    context.getSource().sendSystemMessage(Component.literal("§a[Система] §fТочка Плэнта Б " + point + " установлена на " + player.blockPosition().toShortString()));
                                     return 1;
                                 })))
 
@@ -185,7 +224,7 @@ public class TeamCommands {
             BlockPos pos = player.blockPosition();
             data.setSpawn(teamId, pos);
             String teamName = (teamId == 1) ? "ОДИНОЧКИ" : "БАНДОСЫ";
-            context.getSource().sendSuccess(() -> Component.literal("Точка спавна команды " + teamName + " установлена на " + pos.toShortString()), true);
+            context.getSource().sendSystemMessage( Component.literal("Точка спавна команды " + teamName + " установлена на " + pos.toShortString()));
             return 1;
         } catch (Exception e) { return 0; }
     }
@@ -196,17 +235,26 @@ public class TeamCommands {
         List<BlockPos> spawns = (teamId == 1) ? data.spawns1 : data.spawns2;
         String teamName = (teamId == 1) ? "ОДИНОЧКИ" : "БАНДОСЫ";
         if (spawns.isEmpty()) {
-            context.getSource().sendSuccess(() -> Component.literal("§c[Система] §fУ группировки " + teamName + " нет точек спавна."), false);
+            context.getSource().sendSystemMessage( Component.literal("§c[Система] §fУ группировки " + teamName + " нет точек спавна."));
             return 1;
         }
-        context.getSource().sendSuccess(() -> Component.literal("§a[Система] §fТочки спавна (" + teamName + "):"), false);
+        context.getSource().sendSystemMessage( Component.literal("§a[Система] §fТочки спавна (" + teamName + "):"));
         for (int i = 0; i < spawns.size(); i++) {
             final int index = i;
-            context.getSource().sendSuccess(() -> Component.literal("  §e[" + index + "] §f- " + spawns.get(index).toShortString()), false);
+            context.getSource().sendSystemMessage( Component.literal("  §e[" + index + "] §f- " + spawns.get(index).toShortString()));
         }
         return 1;
     }
-
+    private static int toggleNightVision(CommandContext<CommandSourceStack> context) {
+        try {
+            TeamData data = TeamData.get(context.getSource().getLevel());
+            data.globalNightVision = !data.globalNightVision;
+            data.setDirty();
+            String state = data.globalNightVision ? "§aВКЛЮЧЕНО" : "§cВЫКЛЮЧЕНО";
+            context.getSource().sendSuccess(() -> Component.literal("§a[Система] §fБесконечное ночное зрение: " + state), true);
+            return 1;
+        } catch (Exception e) { return 0; }
+    }
     private static int delSpawn(CommandContext<CommandSourceStack> context) {
         int teamId = IntegerArgumentType.getInteger(context, "team");
         int index = IntegerArgumentType.getInteger(context, "index");
@@ -215,7 +263,7 @@ public class TeamCommands {
         if (index >= 0 && index < spawns.size()) {
             BlockPos removedPos = spawns.remove(index);
             data.setDirty();
-            context.getSource().sendSuccess(() -> Component.literal("§a[Система] §fТочка [" + index + "] (" + removedPos.toShortString() + ") удалена."), true);
+            context.getSource().sendSystemMessage( Component.literal("§a[Система] §fТочка [" + index + "] (" + removedPos.toShortString() + ") удалена."));
         } else {
             context.getSource().sendFailure(Component.literal("§c[Ошибка] Неверный индекс."));
         }

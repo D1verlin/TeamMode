@@ -41,7 +41,7 @@ public class ScoreHud implements IGuiOverlay {
         if (s2 > lastScore2) { lastScore2 = s2; lastChangeTime2 = currentTime; }
 
         int centerX = screenWidth / 2;
-        int y = 10;
+        int y = 40;
 
         int nameWidth = 75; // Немного увеличим, чтобы влезло и лого, и текст
         int scoreWidth = 30;
@@ -80,7 +80,7 @@ public class ScoreHud implements IGuiOverlay {
             int barWidth = 180; // Сделаем чуть шире
             int barHeight = 10;
             int barStartX = centerX - barWidth / 2;
-            int barStartY = 35; // Чуть ниже основного счета
+            int barStartY = 65; // Чуть ниже основного счета
 
             int bar_s1 = com.example.examplemod.network.ClientTeamData.clientScore1;
             int bar_s2 = com.example.examplemod.network.ClientTeamData.clientScore2;
@@ -122,6 +122,12 @@ public class ScoreHud implements IGuiOverlay {
             else { status += "НЕЙТРАЛЬНА"; }
 
             guiGraphics.drawCenteredString(mc.font, status, centerX, barStartY + 14, color);
+        }
+        // --- Подсказки для режима ЗАКЛАДКИ БОМБЫ ---
+        if (com.example.examplemod.network.ClientTeamData.currentGameMode.equals("defusal")) {
+            int textY = 65; // Сразу под счетом
+            guiGraphics.drawCenteredString(mc.font, "РЕЖИМ ЗАКЛАДКИ БОМБЫ", centerX, textY, 0xFF4444);
+            guiGraphics.drawCenteredString(mc.font, "Одиночки: Взорвать А или Б  |  Бандосы: Защитить плэнты", centerX, textY + 11, 0xAAAAAA);
         }
     }
 

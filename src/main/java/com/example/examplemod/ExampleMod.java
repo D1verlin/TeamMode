@@ -25,6 +25,12 @@ public class ExampleMod {
 
     public ExampleMod(FMLJavaModLoadingContext context) {
         IEventBus modEventBus = context.getModEventBus();
+
+        // --- РЕГИСТРИРУЕМ НАШИ НОВЫЕ КЛАССЫ ---
+        com.example.examplemod.registry.ModBlocks.BLOCKS.register(modEventBus);
+        com.example.examplemod.registry.ModItems.ITEMS.register(modEventBus);
+        com.example.examplemod.registry.ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
+
         // 1. Регистрация метода общей настройки
         modEventBus.addListener(this::commonSetup);
 
@@ -59,6 +65,9 @@ public class ExampleMod {
         public static void registerOverlays(net.minecraftforge.client.event.RegisterGuiOverlaysEvent event) {
             // Регистрируем наш HUD (плашку со счетом)
             event.registerAboveAll("score_hud", com.example.examplemod.client.ScoreHud.INSTANCE);
+
+            // НОВОЕ: Регистрируем TAB меню поверх всего остального
+            event.registerAboveAll("cs2_tab", com.example.examplemod.client.Cs2TabRenderer.INSTANCE);
         }
         @SubscribeEvent
         public static void registerKeys(net.minecraftforge.client.event.RegisterKeyMappingsEvent event) {

@@ -41,5 +41,9 @@ public class ClientTeamData {
     public static BlockPos clientZonePos1 = null;
     public static BlockPos clientZonePos2 = null;
     public static int clientZoneOwner = 0; // 0 - ничья, 1 - Одиночки, 2 - Бандосы
-
+    // --- ЗОНЫ ДЛЯ ЗАКЛАДКИ БОМБЫ ---
+    public static BlockPos clientSiteAPos1 = null;
+    public static BlockPos clientSiteAPos2 = null;
+    public static BlockPos clientSiteBPos1 = null;
+    public static BlockPos clientSiteBPos2 = null;
 }

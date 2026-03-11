@@ -31,18 +31,26 @@ public class TeamData extends SavedData {
     // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ РЕЖИМОВ ---
     public String gameMode = "deathmatch"; // "deathmatch" или "domination"
     public int targetScore = 100; // Очков для победы
-
+    public boolean globalNightVision = true; // Глобальное ночное зрение
     // Координаты зоны удержания (две точки образуют куб/параллелепипед)
     public BlockPos zonePos1 = null;
     public BlockPos zonePos2 = null;
     public int zoneOwner = 0; // 0 - ничья, 1 - Одиночки, 2 - Бандосы
     // ------------------------------------
+    // --- ЗОНЫ ДЛЯ ЗАКЛАДКИ БОМБЫ (Defusal) ---
+    public BlockPos siteAPos1 = null;
+    public BlockPos siteAPos2 = null;
+    public BlockPos siteBPos1 = null;
+    public BlockPos siteBPos2 = null;
+
 
     public static TeamData load(CompoundTag nbt) {
         TeamData data = new TeamData();
         data.score1 = nbt.getInt("Score1");
         data.score2 = nbt.getInt("Score2");
-
+        data.gameMode = nbt.contains("GameMode") ? nbt.getString("GameMode") : "deathmatch";
+        data.targetScore = nbt.contains("TargetScore") ? nbt.getInt("TargetScore") : 100;
+        data.globalNightVision = !nbt.contains("GlobalNV") || nbt.getBoolean("GlobalNV"); // По умолчанию true
         // Загрузка игроков команды 1
         data.team1.clear();
         int t1Size = nbt.getInt("Team1Size");
@@ -82,7 +90,10 @@ public class TeamData extends SavedData {
         data.targetScore = nbt.contains("TargetScore") ? nbt.getInt("TargetScore") : 100;
         if (nbt.contains("ZonePos1")) data.zonePos1 = NbtUtils.readBlockPos(nbt.getCompound("ZonePos1"));
         if (nbt.contains("ZonePos2")) data.zonePos2 = NbtUtils.readBlockPos(nbt.getCompound("ZonePos2"));
-
+        if (nbt.contains("SiteAPos1")) data.siteAPos1 = NbtUtils.readBlockPos(nbt.getCompound("SiteAPos1"));
+        if (nbt.contains("SiteAPos2")) data.siteAPos2 = NbtUtils.readBlockPos(nbt.getCompound("SiteAPos2"));
+        if (nbt.contains("SiteBPos1")) data.siteBPos1 = NbtUtils.readBlockPos(nbt.getCompound("SiteBPos1"));
+        if (nbt.contains("SiteBPos2")) data.siteBPos2 = NbtUtils.readBlockPos(nbt.getCompound("SiteBPos2"));
         return data;
     }
 
@@ -100,7 +111,9 @@ public class TeamData extends SavedData {
     public CompoundTag save(CompoundTag nbt) {
         nbt.putInt("Score1", score1);
         nbt.putInt("Score2", score2);
-
+        nbt.putString("GameMode", gameMode);
+        nbt.putInt("TargetScore", targetScore);
+        nbt.putBoolean("GlobalNV", globalNightVision);
         // Сохранение игроков команды 1
         nbt.putInt("Team1Size", team1.size());
         for (int i = 0; i < team1.size(); i++) {
@@ -136,7 +149,10 @@ public class TeamData extends SavedData {
         nbt.putInt("TargetScore", targetScore);
         if (zonePos1 != null) nbt.put("ZonePos1", NbtUtils.writeBlockPos(zonePos1));
         if (zonePos2 != null) nbt.put("ZonePos2", NbtUtils.writeBlockPos(zonePos2));
-
+        if (siteAPos1 != null) nbt.put("SiteAPos1", NbtUtils.writeBlockPos(siteAPos1));
+        if (siteAPos2 != null) nbt.put("SiteAPos2", NbtUtils.writeBlockPos(siteAPos2));
+        if (siteBPos1 != null) nbt.put("SiteBPos1", NbtUtils.writeBlockPos(siteBPos1));
+        if (siteBPos2 != null) nbt.put("SiteBPos2", NbtUtils.writeBlockPos(siteBPos2));
         return nbt;
     }
 
@@ -195,7 +211,19 @@ public class TeamData extends SavedData {
         setDirty();
         com.example.examplemod.network.PacketHandler.sendScoreUpdate(
                 score1, score2, team1, team2, playerKills, playerDeaths,
-                gameMode, zonePos1, zonePos2, zoneOwner, targetScore // Передаем targetScore
+                gameMode, zonePos1, zonePos2, zoneOwner, targetScore,
+                siteAPos1, siteAPos2, siteBPos1, siteBPos2 // ДОБАВИЛ ПЛЭНТЫ
         );
+    }
+    // Проверка, находится ли позиция внутри Плэнта А или Б
+    public boolean isPosInBombSite(BlockPos pos) {
+        boolean inA = false, inB = false;
+        if (siteAPos1 != null && siteAPos2 != null) {
+            inA = new net.minecraft.world.phys.AABB(siteAPos1, siteAPos2).inflate(0.5).contains(net.minecraft.world.phys.Vec3.atCenterOf(pos));
+        }
+        if (siteBPos1 != null && siteBPos2 != null) {
+            inB = new net.minecraft.world.phys.AABB(siteBPos1, siteBPos2).inflate(0.5).contains(net.minecraft.world.phys.Vec3.atCenterOf(pos));
+        }
+        return inA || inB;
     }
 }

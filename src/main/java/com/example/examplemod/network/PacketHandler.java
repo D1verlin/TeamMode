@@ -14,8 +14,10 @@ import java.util.UUID;
 
 public class PacketHandler {
     private static final String PROTOCOL_VERSION = "1";
+
+    // ИСПРАВЛЕНО: Теперь передаем одной строкой (через двоеточие)
     public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(ExampleMod.MODID, "main"),
+            new ResourceLocation(ExampleMod.MODID + ":main"),
             () -> PROTOCOL_VERSION,
             PROTOCOL_VERSION::equals,
             PROTOCOL_VERSION::equals
@@ -29,7 +31,6 @@ public class PacketHandler {
         INSTANCE.registerMessage(id++, PacketSaveKit.class, PacketSaveKit::toBytes, PacketSaveKit::new, PacketSaveKit::handle);
         INSTANCE.registerMessage(id++, PacketSelectKit.class, PacketSelectKit::toBytes, PacketSelectKit::new, PacketSelectKit::handle);
         INSTANCE.registerMessage(id++, PacketDeleteKit.class, PacketDeleteKit::toBytes, PacketDeleteKit::new, PacketDeleteKit::handle);
-        // Внутри метода register() в PacketHandler.java
         INSTANCE.registerMessage(id++, PacketToggleShop.class, PacketToggleShop::toBytes, PacketToggleShop::new, PacketToggleShop::handle);
         INSTANCE.registerMessage(id++, PacketKillstreak.class, PacketKillstreak::toBytes, PacketKillstreak::new, PacketKillstreak::handle);
     }
@@ -40,16 +41,18 @@ public class PacketHandler {
 
     public static void sendScoreUpdate(int s1, int s2, List<UUID> t1, List<UUID> t2,
                                        Map<UUID, Integer> kills, Map<UUID, Integer> deaths,
-                                       String mode, BlockPos zp1, BlockPos zp2, int zOwner, int targetScore) {
+                                       String mode, BlockPos zp1, BlockPos zp2, int zOwner, int targetScore,
+                                       BlockPos sa1, BlockPos sa2, BlockPos sb1, BlockPos sb2) {
         INSTANCE.send(PacketDistributor.ALL.noArg(),
-                new PacketSyncScore(s1, s2, t1, t2, kills, deaths, mode, zp1, zp2, zOwner, targetScore));
+                new PacketSyncScore(s1, s2, t1, t2, kills, deaths, mode, zp1, zp2, zOwner, targetScore, sa1, sa2, sb1, sb2));
     }
 
     public static void sendScoreToPlayer(ServerPlayer player, int s1, int s2, List<UUID> t1, List<UUID> t2,
                                          Map<UUID, Integer> kills, Map<UUID, Integer> deaths,
-                                         String mode, BlockPos zp1, BlockPos zp2, int zOwner, int targetScore) {
+                                         String mode, BlockPos zp1, BlockPos zp2, int zOwner, int targetScore,
+                                         BlockPos sa1, BlockPos sa2, BlockPos sb1, BlockPos sb2) {
         INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
-                new PacketSyncScore(s1, s2, t1, t2, kills, deaths, mode, zp1, zp2, zOwner, targetScore));
+                new PacketSyncScore(s1, s2, t1, t2, kills, deaths, mode, zp1, zp2, zOwner, targetScore, sa1, sa2, sb1, sb2));
     }
 
     public static void sendKitsToAll(java.util.Map<String, java.util.List<net.minecraft.world.item.ItemStack>> kits) {

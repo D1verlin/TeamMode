@@ -19,66 +19,72 @@ public class ZoneRenderer {
 
     @SubscribeEvent
     public static void onRenderWorld(RenderLevelStageEvent event) {
-        if (!ClientTeamData.currentGameMode.equals("domination")
-                || ClientTeamData.clientZonePos1 == null
-                || ClientTeamData.clientZonePos2 == null) {
-            return;
-        }
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
 
-        // Рендерим на этапе после частиц, чтобы зона была видна поверх всего
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
+        Minecraft mc = Minecraft.getInstance();
+        PoseStack poseStack = event.getPoseStack();
+        Vec3 cameraPos = mc.gameRenderer.getMainCamera().getPosition();
 
-            Minecraft mc = Minecraft.getInstance();
-            PoseStack poseStack = event.getPoseStack();
-            Vec3 cameraPos = mc.gameRenderer.getMainCamera().getPosition();
+        poseStack.pushPose();
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        Matrix4f matrix = poseStack.last().pose();
 
-            // Создаем область захвата
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.disableDepthTest(); // Видно сквозь стены
+        RenderSystem.disableCull();
+
+        Tesselator tesselator = Tesselator.getInstance();
+        BufferBuilder buffer = tesselator.getBuilder();
+
+        // 1. РЕНДЕР РЕЖИМА "УДЕРЖАНИЕ ЗОНЫ"
+        if (ClientTeamData.currentGameMode.equals("domination") && ClientTeamData.clientZonePos1 != null && ClientTeamData.clientZonePos2 != null) {
             AABB box = new AABB(ClientTeamData.clientZonePos1, ClientTeamData.clientZonePos2).inflate(0.01);
-
-            // Цвета фракций
             float r, g, b;
             int owner = ClientTeamData.clientZoneOwner;
-            if (owner == 1) { r = 1.0f; g = 0.6f; b = 0.0f; } // Оранжевый (Одиночки)
-            else if (owner == 2) { r = 0.2f; g = 0.4f; b = 1.0f; } // Синий (Бандосы)
-            else { r = 0.9f; g = 0.9f; b = 0.9f; } // Белый (Нейтрал)
+            if (owner == 1) { r = 1.0f; g = 0.6f; b = 0.0f; }
+            else if (owner == 2) { r = 0.2f; g = 0.4f; b = 1.0f; }
+            else { r = 0.9f; g = 0.9f; b = 0.9f; }
 
-            poseStack.pushPose();
-            poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-            Matrix4f matrix = poseStack.last().pose();
+            renderBox(buffer, tesselator, matrix, box, r, g, b);
+        }
 
-            // --- НАСТРОЙКИ КРАСИВОГО РЕНДЕРА ---
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
-            RenderSystem.setShader(GameRenderer::getPositionColorShader);
-
-            // ВАЖНО: Если хочешь, чтобы зону НЕ было видно сквозь стены,
-            // замени disableDepthTest() на enableDepthTest()
-            RenderSystem.disableDepthTest();
-
-            RenderSystem.disableCull(); // Чтобы видеть стенки изнутри и снаружи
-
-            Tesselator tesselator = Tesselator.getInstance();
-            BufferBuilder buffer = tesselator.getBuilder();
-
-            // 1. РИСУЕМ ПЛОТНЫЕ ГРАНИ (ПОЛУПРОЗРАЧНЫЙ КУБ)
-            buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            renderSolidBox(buffer, matrix, box, r, g, b, 0.25f); // Прозрачность стенок 25%
-            tesselator.end();
-
-            // 2. РИСУЕМ ЯРКИЙ КАРКАС (ЛИНИИ) ДЛЯ ЧЕТКОСТИ
-            // Рисуем 3 слоя со смещением для имитации толщины
-            for (float off = -0.01f; off <= 0.01f; off += 0.01f) {
-                buffer.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-                drawBoxLines(buffer, matrix, box.inflate(off), r, g, b, 0.8f);
-                tesselator.end();
+        // 2. РЕНДЕР РЕЖИМА "ЗАКЛАДКА БОМБЫ"
+        if (ClientTeamData.currentGameMode.equals("defusal")) {
+            // Плэнт А (Красная зона)
+            if (ClientTeamData.clientSiteAPos1 != null && ClientTeamData.clientSiteAPos2 != null) {
+                AABB boxA = new AABB(ClientTeamData.clientSiteAPos1, ClientTeamData.clientSiteAPos2).inflate(0.01);
+                renderBox(buffer, tesselator, matrix, boxA, 1.0f, 0.2f, 0.2f); // Красный
             }
+            // Плэнт Б (Синяя/Голубая зона)
+            if (ClientTeamData.clientSiteBPos1 != null && ClientTeamData.clientSiteBPos2 != null) {
+                AABB boxB = new AABB(ClientTeamData.clientSiteBPos1, ClientTeamData.clientSiteBPos2).inflate(0.01);
+                renderBox(buffer, tesselator, matrix, boxB, 0.2f, 0.6f, 1.0f); // Голубой
+            }
+        }
 
-            RenderSystem.enableCull();
-            RenderSystem.enableDepthTest();
-            RenderSystem.disableBlend();
-            poseStack.popPose();
+        RenderSystem.enableCull();
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        poseStack.popPose();
+    }
+
+    // Вспомогательный метод, чтобы не дублировать код отрисовки граней и линий
+    private static void renderBox(BufferBuilder buffer, Tesselator tesselator, Matrix4f matrix, AABB box, float r, float g, float b) {
+        // Полупрозрачные стенки
+        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        renderSolidBox(buffer, matrix, box, r, g, b, 0.25f);
+        tesselator.end();
+
+        // Яркий каркас (3 слоя для толщины)
+        for (float off = -0.01f; off <= 0.01f; off += 0.01f) {
+            buffer.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+            drawBoxLines(buffer, matrix, box.inflate(off), r, g, b, 0.8f);
+            tesselator.end();
         }
     }
+
 
     // Метод для отрисовки 6 сторон куба
     private static void renderSolidBox(BufferBuilder buffer, Matrix4f mat, AABB b, float r, float g, float bl, float a) {

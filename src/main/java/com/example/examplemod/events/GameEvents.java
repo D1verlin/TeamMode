@@ -20,7 +20,6 @@ import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
-
 import net.minecraft.world.phys.AABB;
 
 import java.util.HashMap;
@@ -40,6 +39,8 @@ public class GameEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             ServerLevel level = player.serverLevel();
             TeamData teamData = TeamData.get(level);
+
+            // Отправляем все данные клиенту, включая зоны А и Б
             PacketHandler.sendScoreToPlayer(
                     player,
                     teamData.score1,
@@ -52,7 +53,11 @@ public class GameEvents {
                     teamData.zonePos1,
                     teamData.zonePos2,
                     teamData.zoneOwner,
-                    teamData.targetScore
+                    teamData.targetScore,
+                    teamData.siteAPos1,
+                    teamData.siteAPos2,
+                    teamData.siteBPos1,
+                    teamData.siteBPos2
             );
 
             // --- Синхронизация КИТОВ ---
@@ -79,8 +84,12 @@ public class GameEvents {
                 int killerTeam = data.getTeamOf(killer.getUUID());
                 int victimTeam = data.getTeamOf(victim.getUUID());
 
+                // Начисляем командные очки за килл (только если это не режим закладки бомбы,
+                // так как в закладке бомбы очки даются за раунды)
                 if (killerTeam != 0 && victimTeam != 0 && killerTeam != victimTeam) {
-                    data.addScore(killerTeam, 1);
+                    if (!data.gameMode.equals("defusal")) {
+                        data.addScore(killerTeam, 1);
+                    }
                 }
 
                 int currentStreak = killstreaks.getOrDefault(killer.getUUID(), 0) + 1;
@@ -115,7 +124,7 @@ public class GameEvents {
                         new PacketKillstreak(titleText, subtitleText, streakColor)
                 );
 
-                victim.displayClientMessage(Component.literal("§cВас убил " + killer.getName().getString()), true);
+                victim.displayClientMessage(Component.literal("§cВас убил " + killer.getName().getString()), false);
             }
         }
     }
@@ -142,16 +151,14 @@ public class GameEvents {
         }
     }
 
-    private static void giveShopKit(ServerPlayer player, TeamData data, int teamId) {
+    public static void giveShopKit(ServerPlayer player, TeamData data, int teamId) {
         player.getInventory().clearContent();
 
-        // Загружаем кит с ID 4 для Одиночек и ID 5 для Бандосов
         String kitKey = (teamId == 1) ? "kit4" : (teamId == 2 ? "kit5" : null);
 
         if (kitKey != null) {
             java.util.List<net.minecraft.world.item.ItemStack> items = com.example.examplemod.config.KitConfig.KITS.get(kitKey);
             if (items != null && !items.isEmpty()) {
-                // Проходимся по всем сохраненным слотам и восстанавливаем их позицию
                 for (int i = 0; i < items.size() && i < player.getInventory().getContainerSize(); i++) {
                     net.minecraft.world.item.ItemStack stack = items.get(i);
                     if (!stack.isEmpty()) {
@@ -164,13 +171,39 @@ public class GameEvents {
         player.inventoryMenu.broadcastChanges();
     }
 
-    // 4. Событие: Отключаем голод
+    // 4. Событие: Ежетиковая проверка игроков (Голод, Ночное зрение, Оффхенд)
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
         if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide) {
-            Player player = event.player;
+            ServerPlayer player = (ServerPlayer) event.player;
+
+            // Отключаем голод
             player.getFoodData().setFoodLevel(20);
             player.getFoodData().setSaturation(5.0f);
+
+            ServerLevel level = player.serverLevel();
+            TeamData data = TeamData.get(level);
+
+            // Бесконечное ночное зрение
+            if (data.globalNightVision) {
+                player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
+                        net.minecraft.world.effect.MobEffects.NIGHT_VISION, 300, 0, false, false, false
+                ));
+            } else {
+                if (player.hasEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION)) {
+                    player.removeEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION);
+                }
+            }
+
+            // Блокируем вторую руку (оффхенд)
+            net.minecraft.world.item.ItemStack offhand = player.getOffhandItem();
+            if (!offhand.isEmpty()) {
+                net.minecraft.world.item.ItemStack copy = offhand.copy();
+                player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, net.minecraft.world.item.ItemStack.EMPTY);
+                if (!player.getInventory().add(copy)) {
+                    player.drop(copy, false);
+                }
+            }
         }
     }
 
@@ -214,11 +247,9 @@ public class GameEvents {
             if (server != null) {
                 for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     if (player.isAlive()) {
-                        // Выдаем эффект свечения: 100 тиков (5 секунд), уровень 0, без партиклов
                         player.addEffect(new net.minecraft.world.effect.MobEffectInstance(
                                 net.minecraft.world.effect.MobEffects.GLOWING, 100, 0, false, false
                         ));
-                        // Оповещаем игрока сообщением над хотбаром
                         player.displayClientMessage(Component.literal("§c[Радар] Позиции всех игроков раскрыты на 5 секунд!"), true);
                     }
                 }
@@ -233,6 +264,7 @@ public class GameEvents {
 
             TeamData data = TeamData.get(level);
 
+            // --- ЛОГИКА РЕЖИМА DOMINATION ---
             if (data.gameMode.equals("domination") && data.zonePos1 != null && data.zonePos2 != null) {
                 AABB zoneBox = new AABB(data.zonePos1, data.zonePos2).inflate(0.5);
 
@@ -248,7 +280,6 @@ public class GameEvents {
                 }
 
                 int newOwner = 0;
-
                 if (t1PlayersInZone > 0 && t2PlayersInZone == 0) {
                     newOwner = 1;
                     data.addScore(1, 1);
@@ -263,18 +294,68 @@ public class GameEvents {
                     data.zoneOwner = newOwner;
                     data.sync();
                 }
+            }
 
-                if (data.score1 >= data.targetScore) {
-                    level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§a§lОДИНОЧКИ ПОБЕДИЛИ!"), false);
-                    resetGame(data, level);
-                } else if (data.score2 >= data.targetScore) {
-                    level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§c§lБАНДОСЫ ПОБЕДИЛИ!"), false);
-                    resetGame(data, level);
-                }
+            // --- ГЛОБАЛЬНАЯ ПРОВЕРКА НА ПОБЕДУ В МАТЧЕ ---
+            if (data.score1 >= data.targetScore) {
+                level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§a§lОДИНОЧКИ ВЫИГРАЛИ МАТЧ!"), false);
+                resetGame(data, level);
+                if (data.gameMode.equals("defusal")) restartDefusalRound(level);
+            } else if (data.score2 >= data.targetScore) {
+                level.getServer().getPlayerList().broadcastSystemMessage(net.minecraft.network.chat.Component.literal("§c§lБАНДОСЫ ВЫИГРАЛИ МАТЧ!"), false);
+                resetGame(data, level);
+                if (data.gameMode.equals("defusal")) restartDefusalRound(level);
             }
         }
     }
 
+    // --- МЕТОД ДЛЯ СТАРТА / РЕСТАРТА РАУНДА В РЕЖИМЕ DEFUSAL ---
+    public static void restartDefusalRound(ServerLevel level) {
+        TeamData data = TeamData.get(level);
+
+        // 1. Телепортируем и восстанавливаем всех живых игроков
+        for (ServerPlayer player : level.players()) {
+            if (player.isAlive()) {
+                int teamId = data.getTeamOf(player.getUUID());
+                java.util.List<BlockPos> teamSpawns = (teamId == 1) ? data.spawns1 : (teamId == 2 ? data.spawns2 : null);
+
+                // Телепорт на случайный спавн базы
+                if (teamSpawns != null && !teamSpawns.isEmpty()) {
+                    BlockPos randomSpawn = teamSpawns.get(player.getRandom().nextInt(teamSpawns.size()));
+                    player.teleportTo(level, randomSpawn.getX() + 0.5, randomSpawn.getY() + 1, randomSpawn.getZ() + 0.5, player.getYRot(), player.getXRot());
+                    player.setHealth(player.getMaxHealth()); // Полное ХП
+                }
+            }
+
+            // 2. Очищаем инвентари от старых C4
+            for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+                if (player.getInventory().getItem(i).getItem() instanceof com.example.examplemod.world.item.BombItem) {
+                    player.getInventory().setItem(i, net.minecraft.world.item.ItemStack.EMPTY);
+                }
+            }
+        }
+
+        // 3. Выбираем случайного террориста и даем ему бомбу
+        java.util.List<ServerPlayer> terrorists = new java.util.ArrayList<>();
+        for (ServerPlayer player : level.players()) {
+            if (data.getTeamOf(player.getUUID()) == 1) { // 1 = Одиночки
+                terrorists.add(player);
+            }
+        }
+
+        if (!terrorists.isEmpty()) {
+            ServerPlayer randomT = terrorists.get(level.random.nextInt(terrorists.size()));
+
+            // Выдаем предмет из реестра (убедись, что путь к реестру верный)
+            randomT.getInventory().add(new net.minecraft.world.item.ItemStack(com.example.examplemod.registry.ModItems.BOMB_ITEM.get()));
+
+            randomT.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket(Component.literal("§cУ ВАС БОМБА")));
+            randomT.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket(10, 70, 20));
+            randomT.displayClientMessage(Component.literal("§eЗаложите C4 на Плэнте А или Б!"), false);
+        }
+    }
+
+    // --- МЕТОД ПОЛНОГО СБРОСА МАТЧА ---
     private static void resetGame(TeamData data, ServerLevel level) {
         data.score1 = 0;
         data.score2 = 0;
@@ -283,7 +364,6 @@ public class GameEvents {
         data.zoneOwner = 0;
         data.sync();
 
-        // Сбрасываем таймер свечения, чтобы он не сработал сразу после старта нового матча
         glowTimer = 0;
 
         for (ServerPlayer player : level.players()) {
